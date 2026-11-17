@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "549545881513",
+    "firebase_url": "https://nwu-bus-tracking-default-rtdb.firebaseio.com",
+    "project_id": "nwu-bus-tracking",
+    "storage_bucket": "nwu-bus-tracking.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:549545881513:android:c36f27fdb318a5701d1eb8",
+        "android_client_info": {
+          "package_name": "com.example.bus_tracking"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDTjk7roX0VhFhLHlzMn_l3l3qHy9xgUI4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

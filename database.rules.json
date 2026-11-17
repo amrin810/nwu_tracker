@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "device_owners": {
+      ".read": "auth != null",
+      ".write": false
+    },
+    "bus_locations": {
+      ".read": "auth != null",
+      "$busId": {
+        ".write": "auth != null && (root.child('device_owners').child($busId).val() === auth.uid || auth.token.admin === true)",
+        ".validate": "newData.hasChildren(['latitude', 'longitude', 'speed', 'lastUpdated', 'isActive'])",
+        "latitude": {
+          ".validate": "newData.isNumber() && newData.val() >= -90.0 && newData.val() <= 90.0 && newData.val() != 0"
+        },
+        "longitude": {
+          ".validate": "newData.isNumber() && newData.val() >= -180.0 && newData.val() <= 180.0 && newData.val() != 0"
+        },
+        "speed": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "lastUpdated": {
+          ".validate": "newData.isNumber() && newData.val() > 0"
+        },
+        "isActive": {
+          ".validate": "newData.isBoolean()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}
+
