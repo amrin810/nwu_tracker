@@ -14,7 +14,7 @@
  *   4. Take the antenna near a window or outdoors to get satellite lock.
  */
 
-#include <TinyGPSPlus.h>
+#include "TinyGPSPlus.h"
 #include "config.h"
 
 HardwareSerial gpsSerial(1);
@@ -72,7 +72,7 @@ void loop() {
       Serial.println("[*] GPS FIX ACQUIRED!");
       Serial.printf("    Latitude : %.6f\n", gps.location.lat());
       Serial.printf("    Longitude: %.6f\n", gps.location.lng());
-      Serial.printf("    Speed    : %.2f km/h\n", gps.speed.kmh());
+      Serial.printf("    Speed    : %.2f km/h\n", gps.speed.kmph());
       Serial.printf("    Altitude : %.1f meters\n", gps.altitude.meters());
       if (gps.date.isValid() && gps.time.isValid()) {
         Serial.printf("    UTC Time : %04d-%02d-%02d %02d:%02d:%02d\n",

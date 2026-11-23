@@ -20,7 +20,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <TinyGPSPlus.h>
+#include "TinyGPSPlus.h"
 #include <time.h>
 #include "config.h"
 
@@ -187,7 +187,7 @@ void sendTelemetry() {
 
   double lat = gps.location.lat();
   double lng = gps.location.lng();
-  double speedKmh = gps.speed.isValid() ? gps.speed.kmh() : 0.0;
+  double speedKmh = gps.speed.isValid() ? gps.speed.kmph() : 0.0;
 
   // Filter stationary sensor jitter (ignore drift under 0.6 km/h)
   if (speedKmh < 0.6) {
