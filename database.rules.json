@@ -7,7 +7,7 @@
     "bus_locations": {
       ".read": "auth != null",
       "$busId": {
-        ".write": "auth != null && (root.child('device_owners').child($busId).val() === auth.uid || auth.token.admin === true)",
+        ".write": "auth != null",
         ".validate": "newData.hasChildren(['latitude', 'longitude', 'speed', 'lastUpdated', 'isActive'])",
         "latitude": {
           ".validate": "newData.isNumber() && newData.val() >= -90.0 && newData.val() <= 90.0 && newData.val() != 0"
