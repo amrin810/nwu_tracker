@@ -13,7 +13,20 @@
           "package_name": "com.example.bus_tracking"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "549545881513-hd2ga202tstrr17d8nnb4c7hstqc4gbe.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.bus_tracking",
+            "certificate_hash": "6df474ab405f73ad21f6eacd6e76839fb361b5ac"
+          }
+        },
+        {
+          "client_id": "549545881513-679kpsfia08fi52gdquuga6q1869q68v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDTjk7roX0VhFhLHlzMn_l3l3qHy9xgUI4"
@@ -21,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "549545881513-679kpsfia08fi52gdquuga6q1869q68v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

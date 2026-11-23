@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../main.dart';
-import '../../../models/user_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../widgets/app_button.dart';
@@ -57,7 +56,7 @@ class ProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              user?.fullName ?? 'University Student',
+              user?.fullName.isNotEmpty == true ? user!.fullName : 'University Member',
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -66,7 +65,7 @@ class ProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              user?.email ?? 'student@university.edu.bd',
+              user?.email.isNotEmpty == true ? user!.email : 'No email available',
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),
@@ -116,67 +115,28 @@ class ProfilePage extends StatelessWidget {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    _infoRow(Icons.badge_outlined, 'Student / Staff ID', user?.studentId ?? 'CSE-22-0451'),
-                    const Divider(height: 20),
-                    _infoRow(Icons.phone_outlined, 'Contact Phone', user?.phone ?? '01711000001'),
-                    const Divider(height: 20),
-                    _infoRow(Icons.school_outlined, 'Department', user?.department ?? AppConstants.departmentName),
-                    const Divider(height: 20),
-                    _infoRow(Icons.account_balance_outlined, 'University', user?.university ?? kUniversityName),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Viva Role Switcher Card
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(color: AppColors.cardBorder),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Viva Quick Role Switcher',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                    _infoRow(
+                      Icons.badge_outlined,
+                      'Student / Staff ID',
+                      user?.studentId?.isNotEmpty == true ? user!.studentId! : 'Not assigned',
                     ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Instantly test the app UI as different actors for academic evaluation:',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    const Divider(height: 20),
+                    _infoRow(
+                      Icons.phone_outlined,
+                      'Contact Phone',
+                      user?.phone?.isNotEmpty == true ? user!.phone! : 'Not provided',
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      children: UserRole.values.map((role) {
-                        final isCurrent = user?.role == role;
-                        return ChoiceChip(
-                          label: Text(role.toFormattedString()),
-                          selected: isCurrent,
-                          selectedColor: AppColors.primary,
-                          labelStyle: TextStyle(
-                            fontSize: 12,
-                            color: isCurrent ? Colors.white : AppColors.textSecondary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          onSelected: (val) {
-                            if (val) {
-                              authProvider.switchDemoRole(role);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Switched role to ${role.toFormattedString()}'),
-                                  duration: const Duration(seconds: 1),
-                                ),
-                              );
-                            }
-                          },
-                        );
-                      }).toList(),
+                    const Divider(height: 20),
+                    _infoRow(
+                      Icons.school_outlined,
+                      'Department',
+                      user?.department?.isNotEmpty == true ? user!.department! : AppConstants.departmentName,
+                    ),
+                    const Divider(height: 20),
+                    _infoRow(
+                      Icons.account_balance_outlined,
+                      'University',
+                      user?.university?.isNotEmpty == true ? user!.university! : kUniversityName,
                     ),
                   ],
                 ),

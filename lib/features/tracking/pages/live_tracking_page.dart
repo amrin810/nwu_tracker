@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../core/constants/demo_data.dart';
+import '../../../core/constants/nwu_default_data.dart';
 import '../../../core/utils/app_logger.dart';
 import '../../../models/bus_model.dart';
 import '../../../models/live_bus_location.dart';
@@ -229,17 +229,34 @@ class _LiveTrackingPageState extends State<LiveTrackingPage>
 
   List<BusStop> _getStopsForBus(String busId, List<Bus> staticBuses) {
     final modelId = AppConstants.toModelBusId(busId);
-    if (modelId == 'bus-101') return DemoData.sonadangaStops;
-    if (modelId == 'bus-102') return DemoData.daulatpurStops;
-    if (modelId == 'bus-103') return DemoData.boyraStops;
-
+    final busProvider = context.read<BusProvider>();
     final bus = staticBuses.where((b) => b.id == modelId).firstOrNull;
+
     if (bus?.currentRouteId != null) {
-      if (bus!.currentRouteId == 'route-sonadanga') return DemoData.sonadangaStops;
-      if (bus.currentRouteId == 'route-daulatpur') return DemoData.daulatpurStops;
-      if (bus.currentRouteId == 'route-boyra') return DemoData.boyraStops;
+      final route = busProvider.routes
+          .where((r) => r.id == bus!.currentRouteId)
+          .firstOrNull;
+      if (route != null && route.stops.isNotEmpty) {
+        return route.stops;
+      }
     }
-    return DemoData.sonadangaStops;
+
+    if (busProvider.routes.isNotEmpty) {
+      final matchedRoute = busProvider.routes
+          .where((r) => r.stops.any((s) => s.routeId == bus?.currentRouteId))
+          .firstOrNull;
+      if (matchedRoute != null && matchedRoute.stops.isNotEmpty) {
+        return matchedRoute.stops;
+      }
+      if (busProvider.routes.first.stops.isNotEmpty) {
+        return busProvider.routes.first.stops;
+      }
+    }
+
+    if (modelId == 'bus-101') return NWUDefaultData.sonadangaStops;
+    if (modelId == 'bus-102') return NWUDefaultData.daulatpurStops;
+    if (modelId == 'bus-103') return NWUDefaultData.boyraStops;
+    return NWUDefaultData.sonadangaStops;
   }
 
   Future<void> _loadRouteForBus(String busId, List<Bus> staticBuses) async {

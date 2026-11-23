@@ -4,7 +4,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../models/bus_model.dart';
 import '../../../models/pickup_request_model.dart';
-import '../../../models/user_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/bus_provider.dart';
 import '../../../widgets/dashboard_stat_card.dart';
@@ -29,21 +28,12 @@ class AdminDashboardPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Admin Transportation Portal'),
         actions: [
-          PopupMenuButton<UserRole>(
-            tooltip: 'Switch Demo Role',
-            icon: const Icon(Icons.swap_horiz_rounded),
-            onSelected: (role) {
-              authProvider.switchDemoRole(role);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Switched to ${role.toFormattedString()} mode')),
-              );
+          IconButton(
+            tooltip: 'Refresh Data',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: () {
+              busProvider.fetchAllData();
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: UserRole.admin, child: Text('Role: Administrator')),
-              const PopupMenuItem(value: UserRole.driver, child: Text('Role: Bus Driver')),
-              const PopupMenuItem(value: UserRole.conductor, child: Text('Role: Conductor')),
-              const PopupMenuItem(value: UserRole.student, child: Text('Role: Student')),
-            ],
           ),
         ],
       ),

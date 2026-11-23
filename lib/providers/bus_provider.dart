@@ -66,7 +66,7 @@ class BusProvider extends ChangeNotifier {
   List<Bus> get activeBuses =>
       _buses.where((b) => b.status == BusStatus.active).toList();
 
-  /// Loads all foundational transportation data
+  /// Loads all foundational transportation data from Cloud Firestore
   Future<void> fetchAllData({String? studentId}) async {
     _isLoading = true;
     _errorMessage = null;
@@ -87,7 +87,8 @@ class BusProvider extends ChangeNotifier {
       _busLocations = results[3] as Map<String, BusLocation>;
       _pickupRequests = results[4] as List<PickupRequest>;
 
-      if (_selectedBus == null && _buses.isNotEmpty) {
+      if ((_selectedBus == null || !_buses.any((b) => b.id == _selectedBus!.id)) &&
+          _buses.isNotEmpty) {
         _selectedBus = _buses.first;
       }
     } catch (e) {
@@ -136,7 +137,6 @@ class BusProvider extends ChangeNotifier {
         longitude: live.longitude,
         speedKmH: live.speed,
         updatedAt: live.lastUpdated,
-        isDemo: false,
       );
     }
     return null;

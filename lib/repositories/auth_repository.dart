@@ -5,27 +5,24 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../core/constants/demo_data.dart';
-import '../core/services/supabase_service.dart';
 import '../core/utils/app_logger.dart';
 import '../models/user_model.dart';
 
-/// Repository managing user authentication and profiles
+/// Repository managing user authentication and profiles with Firebase
 class AuthRepository {
-  final SupabaseService _supabaseService;
-
   static const String _userProfileStorageKey = 'user_profile';
 
-  AuthRepository({SupabaseService? supabaseService})
-      : _supabaseService = supabaseService ?? SupabaseService.instance;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
+  final FirebaseDatabase _database;
 
-  bool get _isSupabaseActive => _supabaseService.isInitialized;
-
-  // Registered users cache (initialized with demo accounts for demo/offline resilience)
-  static final List<AppUser> _registeredUsers = List<AppUser>.from(DemoData.demoUsers);
-
-  // Local demo session cache
-  AppUser? _currentDemoUser = _registeredUsers.first; // Default to student
+  AuthRepository({
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+    FirebaseDatabase? database,
+  })  : _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _database = database ?? FirebaseDatabase.instance;
 
   /// Persists the user profile to local SharedPreferences and syncs to Cloud Firestore
   Future<void> saveUserProfile(AppUser user) async {
@@ -33,17 +30,10 @@ class AuthRepository {
       final prefs = await SharedPreferences.getInstance();
       final jsonString = jsonEncode(user.toJson());
       await prefs.setString(_userProfileStorageKey, jsonString);
-      _currentDemoUser = user;
-      final idx = _registeredUsers.indexWhere((u) => u.id == user.id);
-      if (idx >= 0) {
-        _registeredUsers[idx] = user;
-      } else {
-        _registeredUsers.add(user);
-      }
 
       // Sync to Cloud Firestore: users/{uid}
       try {
-        await FirebaseFirestore.instance.collection('users').doc(user.id).set(
+        await _firestore.collection('users').doc(user.id).set(
           user.toJson()..['updatedAt'] = FieldValue.serverTimestamp(),
           SetOptions(merge: true),
         );
@@ -70,13 +60,13 @@ class AuthRepository {
         return AppUser.fromJson(data, fallback: fallback);
       }
     } catch (e) {
-      AppLogger.warning('Failed to parse saved user profile, falling back: $e');
+      AppLogger.warning('Failed to parse saved user profile: $e');
     }
     return null;
   }
 
   /// Checks whether a given ID is already registered for the specified role.
-  /// Validates across Cloud Firestore, Firebase Realtime Database, and local records.
+  /// Validates across Cloud Firestore ('users' collection).
   Future<bool> isIdAlreadyRegistered({
     required UserRole role,
     required String userId,
@@ -84,9 +74,8 @@ class AuthRepository {
     final cleanId = userId.trim();
     if (cleanId.isEmpty) return false;
 
-    // 1. Check in Cloud Firestore ('users' collection)
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final snapshot = await _firestore
           .collection('users')
           .where('role', isEqualTo: role.name)
           .where('userId', isEqualTo: cleanId)
@@ -97,265 +86,150 @@ class AuthRepository {
       AppLogger.warning('Firestore ID uniqueness check skipped: $e');
     }
 
-    // 2. Check in Firebase Realtime Database under 'users' node
-    try {
-      final snapshot = await FirebaseDatabase.instance.ref('users').get();
-      if (snapshot.exists && snapshot.value is Map) {
-        final data = Map<dynamic, dynamic>.from(snapshot.value as Map);
-        for (final entry in data.values) {
-          if (entry is Map) {
-            final existingRole = entry['role']?.toString().toLowerCase();
-            final existingId = (entry['userId'] ??
-                    entry['student_id'] ??
-                    entry['studentId'] ??
-                    entry['user_id'])
-                ?.toString()
-                .trim();
-            if (existingRole == role.name.toLowerCase() &&
-                existingId != null &&
-                existingId.toLowerCase() == cleanId.toLowerCase()) {
-              return true;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      AppLogger.warning('Firebase Realtime Database uniqueness check skipped: $e');
-    }
-
-    // 3. Check in-memory registered users list
-    for (final user in _registeredUsers) {
-      if (user.role == role &&
-          user.userId != null &&
-          user.userId!.trim().toLowerCase() == cleanId.toLowerCase()) {
-        return true;
-      }
-    }
-
     return false;
   }
 
-  /// Returns the currently authenticated user
+  /// Returns the currently authenticated user, or null if no active session
   Future<AppUser?> getCurrentUser() async {
-    AppUser? baseUser;
-
-    // 1. Check Firebase Auth session
     try {
-      final fbUser = FirebaseAuth.instance.currentUser;
-      if (fbUser != null) {
-        try {
-          final doc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(fbUser.uid)
-              .get();
-          if (doc.exists && doc.data() != null) {
-            baseUser = AppUser.fromJson(doc.data()!);
-          }
-        } catch (e) {
-          AppLogger.warning('Failed to fetch Firestore doc for current user: $e');
-        }
-
-        baseUser ??= AppUser(
-          id: fbUser.uid,
-          email: fbUser.email ?? '',
-          fullName: fbUser.displayName ?? 'University Student',
-          role: UserRole.student,
-        );
+      final fbUser = _auth.currentUser;
+      if (fbUser == null) {
+        return null;
       }
-    } catch (e) {
-      AppLogger.warning('Firebase Auth session check notice: $e');
-    }
 
-    if (baseUser == null && _isSupabaseActive) {
+      // Fetch latest profile from Cloud Firestore
       try {
-        final session = _supabaseService.client!.auth.currentSession;
-        if (session != null) {
-          final userId = session.user.id;
-          final response = await _supabaseService.client!
-              .from('profiles')
-              .select()
-              .eq('id', userId)
-              .maybeSingle();
-
-          if (response != null) {
-            baseUser = AppUser.fromJson(response);
-          }
+        final doc = await _firestore.collection('users').doc(fbUser.uid).get();
+        if (doc.exists && doc.data() != null) {
+          final user = AppUser.fromJson(doc.data()!);
+          await saveUserProfile(user);
+          return user;
         }
       } catch (e) {
-        AppLogger.error('Failed to get Supabase session user', e);
+        AppLogger.warning('Failed to fetch Firestore doc for current user: $e');
       }
-    }
 
-    baseUser ??= _currentDemoUser;
-
-    // Load any locally persisted edits from SharedPreferences
-    final savedProfile = await loadSavedUserProfile(fallback: baseUser);
-    if (savedProfile != null) {
-      if (baseUser == null || savedProfile.id == baseUser.id || baseUser.id == 'student-001') {
-        _currentDemoUser = savedProfile;
+      // Fall back to locally persisted profile
+      final savedProfile = await loadSavedUserProfile();
+      if (savedProfile != null && savedProfile.id == fbUser.uid) {
         return savedProfile;
       }
-    }
 
-    return baseUser;
-  }
-
-  /// Sign in with email and password using Firebase Authentication (with fallback to demo mode)
-  Future<AppUser?> signIn({
-    required String email,
-    required String password,
-  }) async {
-    // 1. Try Firebase Authentication
-    try {
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-      final fbUser = userCredential.user;
-      if (fbUser != null) {
-        try {
-          final doc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(fbUser.uid)
-              .get();
-          if (doc.exists && doc.data() != null) {
-            final appUser = AppUser.fromJson(doc.data()!);
-            await saveUserProfile(appUser);
-            _currentDemoUser = appUser;
-            return appUser;
-          }
-        } catch (e) {
-          AppLogger.warning('Failed to fetch user from Firestore: $e');
-        }
-
-        final appUser = AppUser(
-          id: fbUser.uid,
-          email: fbUser.email ?? email,
-          fullName: fbUser.displayName ?? 'University Student',
-          role: UserRole.student,
-        );
-        await saveUserProfile(appUser);
-        _currentDemoUser = appUser;
-        return appUser;
-      }
-    } catch (e) {
-      AppLogger.warning('Firebase signIn attempt: $e');
-      final isDemoEmail = _registeredUsers.any(
-        (u) => u.email.toLowerCase() == email.trim().toLowerCase(),
-      );
-      if (!isDemoEmail && e is FirebaseAuthException) {
-        rethrow;
-      }
-    }
-
-    if (_isSupabaseActive) {
-      try {
-        final response = await _supabaseService.client!.auth.signInWithPassword(
-          email: email,
-          password: password,
-        );
-        if (response.user != null) {
-          final profile = await _supabaseService.client!
-              .from('profiles')
-              .select()
-              .eq('id', response.user!.id)
-              .single();
-          return AppUser.fromJson(profile);
-        }
-      } catch (e) {
-        AppLogger.error('Supabase signIn error', e);
-        rethrow;
-      }
-    }
-
-    // Demo Mode Sign In: Matches any registered user by email, or creates a demo student
-    final matchingDemo = _registeredUsers.firstWhere(
-      (u) => u.email.toLowerCase() == email.trim().toLowerCase(),
-      orElse: () => AppUser(
-        id: 'student-custom',
-        email: email,
-        fullName: 'University Student',
-        userId: 'CSE-22-0099',
-        role: UserRole.student,
-      ),
-    );
-
-    // If there is a saved profile matching this user, restore it
-    final savedProfile = await loadSavedUserProfile(fallback: matchingDemo);
-    if (savedProfile != null && savedProfile.id == matchingDemo.id) {
-      _currentDemoUser = savedProfile;
-      return savedProfile;
-    }
-
-    _currentDemoUser = matchingDemo;
-    return matchingDemo;
-  }
-
-  /// Sign in with Google using Firebase Authentication
-  Future<AppUser?> signInWithGoogle() async {
-    try {
-      UserCredential userCredential;
-
-      if (kIsWeb) {
-        final googleProvider = GoogleAuthProvider();
-        googleProvider.addScope('email');
-        googleProvider.addScope('profile');
-        userCredential = await FirebaseAuth.instance.signInWithPopup(googleProvider);
-      } else {
-        final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
-        final googleUser = await googleSignIn.signIn();
-        if (googleUser == null) return null; // Cancelled by user
-        final googleAuth = await googleUser.authentication;
-        final credential = GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
-        );
-        userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      }
-
-      final fbUser = userCredential.user;
-      if (fbUser == null) return null;
-
-      // Check if user already exists in Cloud Firestore
-      try {
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(fbUser.uid)
-            .get();
-        if (doc.exists && doc.data() != null) {
-          final existingUser = AppUser.fromJson(doc.data()!);
-          await saveUserProfile(existingUser);
-          _currentDemoUser = existingUser;
-          return existingUser;
-        }
-      } catch (e) {
-        AppLogger.warning('Could not load user doc from Firestore: $e');
-      }
-
-      // New Google User -> create profile
-      final newUser = AppUser(
+      // Fall back to Firebase user object
+      final user = AppUser(
         id: fbUser.uid,
         email: fbUser.email ?? '',
         fullName: fbUser.displayName ?? 'University Student',
         role: UserRole.student,
       );
-
-      try {
-        await FirebaseFirestore.instance.collection('users').doc(newUser.id).set(
-          newUser.toJson()..['createdAt'] = FieldValue.serverTimestamp(),
-          SetOptions(merge: true),
-        );
-      } catch (e) {
-        AppLogger.warning('Failed to save Google user to Firestore: $e');
-      }
-
-      await saveUserProfile(newUser);
-      _currentDemoUser = newUser;
-      return newUser;
+      await saveUserProfile(user);
+      return user;
     } catch (e) {
-      AppLogger.error('Google Sign-In error', e);
-      rethrow;
+      AppLogger.warning('Firebase Auth session check notice: $e');
+      return null;
     }
+  }
+
+  /// Sign in with email and password using Firebase Authentication
+  Future<AppUser?> signIn({
+    required String email,
+    required String password,
+  }) async {
+    final userCredential = await _auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final fbUser = userCredential.user;
+    if (fbUser == null) {
+      throw Exception('Authentication failed. User not found.');
+    }
+
+    // Load profile from Firestore
+    try {
+      final doc = await _firestore.collection('users').doc(fbUser.uid).get();
+      if (doc.exists && doc.data() != null) {
+        final appUser = AppUser.fromJson(doc.data()!);
+        await saveUserProfile(appUser);
+        return appUser;
+      }
+    } catch (e) {
+      AppLogger.warning('Failed to fetch user from Firestore: $e');
+    }
+
+    final saved = await loadSavedUserProfile();
+    if (saved != null && saved.id == fbUser.uid) {
+      return saved;
+    }
+
+    final appUser = AppUser(
+      id: fbUser.uid,
+      email: fbUser.email ?? email.trim(),
+      fullName: fbUser.displayName ?? 'University Student',
+      role: UserRole.student,
+    );
+    await saveUserProfile(appUser);
+    return appUser;
+  }
+
+  /// Sign in with Google using Firebase Authentication
+  Future<AppUser?> signInWithGoogle() async {
+    UserCredential userCredential;
+
+    if (kIsWeb) {
+      final googleProvider = GoogleAuthProvider();
+      googleProvider.addScope('email');
+      googleProvider.addScope('profile');
+      userCredential = await _auth.signInWithPopup(googleProvider);
+    } else {
+      final googleSignIn = GoogleSignIn(
+        serverClientId:
+            '549545881513-679kpsfia08fi52gdquuga6q1869q68v.apps.googleusercontent.com',
+        scopes: ['email', 'profile'],
+      );
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) return null; // Cancelled by user
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      userCredential = await _auth.signInWithCredential(credential);
+    }
+
+    final fbUser = userCredential.user;
+    if (fbUser == null) return null;
+
+    // Check if user already exists in Cloud Firestore
+    try {
+      final doc = await _firestore.collection('users').doc(fbUser.uid).get();
+      if (doc.exists && doc.data() != null) {
+        final existingUser = AppUser.fromJson(doc.data()!);
+        await saveUserProfile(existingUser);
+        return existingUser;
+      }
+    } catch (e) {
+      AppLogger.warning('Could not load user doc from Firestore: $e');
+    }
+
+    // New Google User -> create profile
+    final newUser = AppUser(
+      id: fbUser.uid,
+      email: fbUser.email ?? '',
+      fullName: fbUser.displayName ?? 'University Student',
+      role: UserRole.student,
+    );
+
+    try {
+      await _firestore.collection('users').doc(newUser.id).set(
+        newUser.toJson()..['createdAt'] = FieldValue.serverTimestamp(),
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      AppLogger.warning('Failed to save Google user to Firestore: $e');
+    }
+
+    await saveUserProfile(newUser);
+    return newUser;
   }
 
   /// Register a new user with Firebase Authentication and persist to Firestore + RTDB
@@ -383,48 +257,28 @@ class AuthRepository {
       }
     }
 
-    AppUser newUser;
-
-    // 1. Try Firebase Authentication
-    try {
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-      final fbUser = userCredential.user;
-      if (fbUser != null) {
-        await fbUser.updateDisplayName(fullName.trim());
-        newUser = AppUser(
-          id: fbUser.uid,
-          email: email.trim(),
-          fullName: fullName.trim(),
-          userId: effectiveId,
-          phone: phone?.trim(),
-          role: role,
-        );
-      } else {
-        throw Exception('Failed to create Firebase user account');
-      }
-    } catch (e) {
-      AppLogger.warning('Firebase Auth signUp failed / offline: $e');
-      if (e is FirebaseAuthException) {
-        rethrow;
-      }
-
-      // Offline / Demo Mode Registration fallback
-      newUser = AppUser(
-        id: 'usr-${DateTime.now().millisecondsSinceEpoch}',
-        email: email,
-        fullName: fullName,
-        userId: effectiveId,
-        phone: phone,
-        role: role,
-      );
+    final userCredential = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final fbUser = userCredential.user;
+    if (fbUser == null) {
+      throw Exception('Failed to create Firebase user account');
     }
+
+    await fbUser.updateDisplayName(fullName.trim());
+    final newUser = AppUser(
+      id: fbUser.uid,
+      email: email.trim(),
+      fullName: fullName.trim(),
+      userId: effectiveId,
+      phone: phone?.trim(),
+      role: role,
+    );
 
     // 2. Persist user record to Cloud Firestore: users/{id}
     try {
-      await FirebaseFirestore.instance.collection('users').doc(newUser.id).set(
+      await _firestore.collection('users').doc(newUser.id).set(
         newUser.toJson()..['createdAt'] = FieldValue.serverTimestamp(),
         SetOptions(merge: true),
       );
@@ -435,11 +289,11 @@ class AuthRepository {
 
     // 3. Save user record to Firebase Realtime Database: users/{id}
     try {
-      final userRef = FirebaseDatabase.instance.ref('users/${newUser.id}');
+      final userRef = _database.ref('users/${newUser.id}');
       await userRef.set(newUser.toFirebaseMap());
       AppLogger.info('Saved user record to Firebase RTDB for ${newUser.email}');
     } catch (e) {
-      AppLogger.warning('Firebase RTDB user write skipped (offline/demo mode): $e');
+      AppLogger.warning('Firebase RTDB user write skipped: $e');
     }
 
     await saveUserProfile(newUser);
@@ -449,7 +303,7 @@ class AuthRepository {
   /// Sign out current user
   Future<void> signOut() async {
     try {
-      await FirebaseAuth.instance.signOut();
+      await _auth.signOut();
       if (!kIsWeb) {
         await GoogleSignIn().signOut();
       }
@@ -457,21 +311,9 @@ class AuthRepository {
       AppLogger.warning('Firebase signOut notice: $e');
     }
 
-    if (_isSupabaseActive) {
-      try {
-        await _supabaseService.client!.auth.signOut();
-      } catch (e) {
-        AppLogger.error('Supabase signOut error', e);
-      }
-    }
-    _currentDemoUser = null;
-  }
-
-  /// Switch user role for testing / viva demo presentation
-  void switchDemoRole(UserRole role) {
-    _currentDemoUser = _registeredUsers.firstWhere(
-      (u) => u.role == role,
-      orElse: () => _registeredUsers.first,
-    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_userProfileStorageKey);
+    } catch (_) {}
   }
 }

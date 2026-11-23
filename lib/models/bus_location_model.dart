@@ -6,7 +6,6 @@ class BusLocation {
   final double speedKmH;
   final double heading;
   final DateTime updatedAt;
-  final bool isDemo;
   final String? lastKnownStopName;
 
   const BusLocation({
@@ -16,7 +15,6 @@ class BusLocation {
     this.speedKmH = 0.0,
     this.heading = 0.0,
     required this.updatedAt,
-    this.isDemo = false,
     this.lastKnownStopName,
   });
 
@@ -30,7 +28,6 @@ class BusLocation {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : DateTime.now(),
-      isDemo: json['is_demo'] as bool? ?? false,
       lastKnownStopName: json['last_known_stop_name'] as String?,
     );
   }
@@ -43,7 +40,6 @@ class BusLocation {
       'speed_kmh': speedKmH,
       'heading': heading,
       'updated_at': updatedAt.toIso8601String(),
-      'is_demo': isDemo,
       'last_known_stop_name': lastKnownStopName,
     };
   }

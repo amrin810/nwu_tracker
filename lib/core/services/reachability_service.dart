@@ -3,7 +3,7 @@ import '../../models/reachability_model.dart';
 
 /// Service implementing the Rule-Based Bus Reachability Algorithm
 ///
-/// VIVA EXPLANATION:
+/// Algorithmic Explanation:
 /// This algorithm compares two estimated values:
 /// 1. Student Walking Time: (Distance to bus or stop / average walking speed of 5 km/h)
 /// 2. Bus Remaining Time: Expected arrival time of the bus at the target stop.

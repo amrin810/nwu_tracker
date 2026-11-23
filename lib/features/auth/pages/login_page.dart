@@ -8,7 +8,7 @@ import '../../../routes/app_routes.dart';
 import '../../../widgets/app_button.dart';
 import '../../../widgets/app_text_field.dart';
 
-/// Authentication Login Page with university credentials and demo one-tap accounts
+/// Authentication Login Page for North Western University students and staff
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -18,8 +18,8 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController(text: 'student@university.edu.bd');
-  final _passwordController = TextEditingController(text: 'student123');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
@@ -29,20 +29,11 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  /// Dispatches the user to their designated dashboard based on role.
-  /// Prepares the role-based routing architecture for future Driver and Conductor modules.
   void _navigateToRoleDashboard(UserRole role) {
     switch (role) {
       case UserRole.student:
-        // Student default: Main live tracking shell
-        Navigator.of(context).pushReplacementNamed(AppRoutes.mainShell);
-        break;
       case UserRole.driver:
-        // TODO: Future Driver Dashboard for broadcasting real-time GPS coordinates
-        Navigator.of(context).pushReplacementNamed(AppRoutes.mainShell);
-        break;
       case UserRole.conductor:
-        // TODO: Future Conductor Portal for managing student RFID tap-in & attendance
         Navigator.of(context).pushReplacementNamed(AppRoutes.mainShell);
         break;
       case UserRole.admin:
@@ -88,19 +79,6 @@ class _LoginPageState extends State<LoginPage> {
         ),
       );
     }
-  }
-
-  void _fillDemoCredentials(String email, String roleName) {
-    setState(() {
-      _emailController.text = email;
-      _passwordController.text = 'demo123';
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Filled demo credentials for $roleName'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
   }
 
   @override
@@ -159,7 +137,7 @@ class _LoginPageState extends State<LoginPage> {
                   AppTextField(
                     controller: _emailController,
                     label: 'Email',
-                    hint: 'student@university.edu.bd',
+                    hint: 'student@nwu.edu.bd',
                     prefixIcon: Icons.email_outlined,
                     keyboardType: TextInputType.emailAddress,
                     validator: (val) {
@@ -226,7 +204,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     onPressed: authProvider.isLoading ? null : _handleGoogleSignIn,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
                   // Register Link
                   Row(
@@ -249,62 +227,12 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 32),
-
-                  // Demo Quick-Access Accounts for Viva Demonstration
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.cardBorder),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.school_outlined, size: 16, color: AppColors.navyAccent),
-                            SizedBox(width: 6),
-                            Text(
-                              'Viva Demo One-Tap Accounts',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: [
-                            _demoChip('Student', 'student@university.edu.bd', UserRole.student),
-                            _demoChip('Driver', 'driver1@university.edu.bd', UserRole.driver),
-                            _demoChip('Conductor', 'conductor1@university.edu.bd', UserRole.conductor),
-                            _demoChip('Admin', 'admin@university.edu.bd', UserRole.admin),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _demoChip(String label, String email, UserRole role) {
-    return ActionChip(
-      label: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-      backgroundColor: AppColors.surfaceVariant,
-      side: const BorderSide(color: AppColors.cardBorder),
-      onPressed: () => _fillDemoCredentials(email, label),
     );
   }
 }

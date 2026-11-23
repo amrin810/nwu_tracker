@@ -16,7 +16,12 @@ class MapService {
 
   /// Computes LatLngBounds to fit a list of coordinates into the viewport
   static LatLngBounds boundsFromLatLngList(List<LatLng> list) {
-    assert(list.isNotEmpty, 'List of LatLng must not be empty');
+    if (list.isEmpty) {
+      return LatLngBounds(
+        southwest: campus,
+        northeast: campus,
+      );
+    }
 
     double minLat = list.first.latitude;
     double maxLat = list.first.latitude;

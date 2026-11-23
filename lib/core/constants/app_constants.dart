@@ -10,18 +10,6 @@ class AppConstants {
   static const String universityName = kUniversityName;
   static const String departmentName = 'Computer Science & Engineering';
 
-  // Supabase Configuration
-  // Note: These can be overridden via --dart-define=SUPABASE_URL=... during build
-  static const String supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://xyzcompany.supabase.co',
-  );
-
-  static const String supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: 'public-anon-key-placeholder',
-  );
-
   // Transportation & Algorithm Constants
   // Average human walking speed: 5.0 km/h = ~83.3 meters per minute
   static const double defaultWalkingSpeedKmH = 5.0;

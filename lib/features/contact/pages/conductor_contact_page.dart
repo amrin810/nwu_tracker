@@ -4,19 +4,20 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../models/bus_model.dart';
 import '../../../providers/bus_provider.dart';
+import '../../../widgets/empty_state.dart';
 
 /// Conductor and Driver authorized contact list
 class ConductorContactPage extends StatelessWidget {
   const ConductorContactPage({super.key});
 
   Future<void> _makePhoneCall(BuildContext context, String? phoneNumber) async {
-    if (phoneNumber == null || phoneNumber.isEmpty) {
+    if (phoneNumber == null || phoneNumber.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Phone number is not available for this contact.')),
       );
       return;
     }
-    final uri = Uri.parse('tel:$phoneNumber');
+    final uri = Uri.parse('tel:${phoneNumber.trim()}');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
@@ -37,14 +38,20 @@ class ConductorContactPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Driver & Conductor Contacts'),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount: buses.length,
-        itemBuilder: (context, index) {
-          final bus = buses[index];
-          return _buildBusContactCard(context, bus);
-        },
-      ),
+      body: buses.isEmpty
+          ? const EmptyState(
+              icon: Icons.contact_phone_outlined,
+              title: 'No Contacts Available',
+              message: 'No bus drivers or conductors are currently registered.',
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: buses.length,
+              itemBuilder: (context, index) {
+                final bus = buses[index];
+                return _buildBusContactCard(context, bus);
+              },
+            ),
     );
   }
 
@@ -91,7 +98,7 @@ class ConductorContactPage extends StatelessWidget {
               context,
               role: 'Conductor',
               name: bus.conductorName ?? 'Assigned Conductor',
-              phone: bus.conductorPhone ?? '01911000003',
+              phone: bus.conductorPhone ?? '',
               icon: Icons.support_agent_rounded,
             ),
             const SizedBox(height: 12),
@@ -101,7 +108,7 @@ class ConductorContactPage extends StatelessWidget {
               context,
               role: 'Driver',
               name: bus.driverName ?? 'Assigned Driver',
-              phone: bus.driverPhone ?? '01811000002',
+              phone: bus.driverPhone ?? '',
               icon: Icons.airline_seat_recline_normal_rounded,
             ),
           ],
@@ -117,6 +124,8 @@ class ConductorContactPage extends StatelessWidget {
     required String phone,
     required IconData icon,
   }) {
+    final hasPhone = phone.trim().isNotEmpty;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -145,12 +154,16 @@ class ConductorContactPage extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(
-                        color: AppColors.successLight,
+                        color: hasPhone ? AppColors.successLight : AppColors.surface,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Text(
-                        'Available',
-                        style: TextStyle(fontSize: 10, color: AppColors.success, fontWeight: FontWeight.w600),
+                      child: Text(
+                        hasPhone ? 'Available' : 'Unassigned',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: hasPhone ? AppColors.success : AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
@@ -165,17 +178,18 @@ class ConductorContactPage extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  phone,
+                  hasPhone ? phone : 'Phone number not provided',
                   style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: () => _makePhoneCall(context, phone),
-            icon: const Icon(Icons.phone_in_talk_rounded, color: AppColors.success),
-            tooltip: 'Call $role',
-          ),
+          if (hasPhone)
+            IconButton(
+              onPressed: () => _makePhoneCall(context, phone),
+              icon: const Icon(Icons.phone_in_talk_rounded, color: AppColors.success),
+              tooltip: 'Call $role',
+            ),
         ],
       ),
     );

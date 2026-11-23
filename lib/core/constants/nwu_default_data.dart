@@ -1,53 +1,14 @@
-import '../../models/user_model.dart';
 import '../../models/bus_model.dart';
 import '../../models/route_model.dart';
-import '../../models/stop_model.dart';
 import '../../models/schedule_model.dart';
-import '../../models/bus_location_model.dart';
-import '../../models/pickup_request_model.dart';
+import '../../models/stop_model.dart';
 
-/// Clean academic demo data for local simulation and viva evaluation
-class DemoData {
-  DemoData._();
+/// Official North Western University (NWU) foundational transportation data
+/// Used for initial seeding to Cloud Firestore and reliable offline cache.
+class NWUDefaultData {
+  NWUDefaultData._();
 
-  // Demo Users
-  static final List<AppUser> demoUsers = [
-    const AppUser(
-      id: 'student-001',
-      email: 'student@university.edu.bd',
-      fullName: 'Tahmid Rahman',
-      studentId: 'CSE-22-0451',
-      phone: '01711000001',
-      role: UserRole.student,
-    ),
-    const AppUser(
-      id: 'driver-001',
-      email: 'driver1@university.edu.bd',
-      fullName: 'Md. Rafiqul Islam',
-      userId: 'DRV-001',
-      phone: '01811000002',
-      role: UserRole.driver,
-      assignedBusId: 'bus-101',
-    ),
-    const AppUser(
-      id: 'conductor-001',
-      email: 'conductor1@university.edu.bd',
-      fullName: 'Tanvir Ahmed',
-      userId: 'CND-001',
-      phone: '01911000003',
-      role: UserRole.conductor,
-      assignedBusId: 'bus-101',
-    ),
-    const AppUser(
-      id: 'admin-001',
-      email: 'admin@university.edu.bd',
-      fullName: 'Dr. Transportation Admin',
-      phone: '01511000004',
-      role: UserRole.admin,
-    ),
-  ];
-
-  // Demo Stops for Sonadanga Route
+  // NWU Stops for Sonadanga Route
   static final List<BusStop> sonadangaStops = [
     const BusStop(
       id: 'stop-s-1',
@@ -78,7 +39,7 @@ class DemoData {
     ),
   ];
 
-  // Demo Stops for Daulatpur Route
+  // NWU Stops for Daulatpur Route
   static final List<BusStop> daulatpurStops = [
     const BusStop(
       id: 'stop-d-1',
@@ -109,7 +70,7 @@ class DemoData {
     ),
   ];
 
-  // Demo Stops for Boyra Route
+  // NWU Stops for Boyra Route
   static final List<BusStop> boyraStops = [
     const BusStop(
       id: 'stop-b-1',
@@ -140,8 +101,8 @@ class DemoData {
     ),
   ];
 
-  // Demo Routes
-  static final List<BusRoute> demoRoutes = [
+  // NWU University Bus Routes
+  static final List<BusRoute> defaultRoutes = [
     BusRoute(
       id: 'route-sonadanga',
       routeName: 'Campus ➔ Sonadanga',
@@ -171,8 +132,8 @@ class DemoData {
     ),
   ];
 
-  // Demo Buses
-  static final List<Bus> demoBuses = [
+  // NWU University Buses
+  static final List<Bus> defaultBuses = [
     const Bus(
       id: 'bus-101',
       busNumber: 'Bus 101',
@@ -182,10 +143,6 @@ class DemoData {
       currentRouteId: 'route-sonadanga',
       currentRouteName: 'Campus ➔ Sonadanga',
       status: BusStatus.active,
-      driverName: 'Md. Rafiqul Islam',
-      driverPhone: '01811000002',
-      conductorName: 'Tanvir Ahmed',
-      conductorPhone: '01911000003',
     ),
     const Bus(
       id: 'bus-102',
@@ -196,10 +153,6 @@ class DemoData {
       currentRouteId: 'route-daulatpur',
       currentRouteName: 'Campus ➔ Daulatpur',
       status: BusStatus.active,
-      driverName: 'Abdul Karim',
-      driverPhone: '01811000005',
-      conductorName: 'Sohel Rana',
-      conductorPhone: '01911000006',
     ),
     const Bus(
       id: 'bus-103',
@@ -210,10 +163,6 @@ class DemoData {
       currentRouteId: 'route-boyra',
       currentRouteName: 'Campus ➔ Boyra',
       status: BusStatus.active,
-      driverName: 'Jahangir Alam',
-      driverPhone: '01811000007',
-      conductorName: 'Rashedul Hasan',
-      conductorPhone: '01911000008',
     ),
     const Bus(
       id: 'bus-104',
@@ -222,49 +171,11 @@ class DemoData {
       licensePlate: 'KLN-METRO-BA-11-5501',
       capacity: 35,
       status: BusStatus.maintenance,
-      driverName: 'Kamal Hossain',
-      driverPhone: '01811000009',
-      conductorName: 'Mamunur Rashid',
-      conductorPhone: '01911000010',
     ),
   ];
 
-  // Initial Demo Bus Locations (Live Telemetry)
-  static final Map<String, BusLocation> initialBusLocations = {
-    'bus-101': BusLocation(
-      busId: 'bus-101',
-      latitude: 22.8230,
-      longitude: 89.5440,
-      speedKmH: 26.5,
-      heading: 340.0,
-      updatedAt: DateTime.now().subtract(const Duration(minutes: 1)),
-      isDemo: true,
-      lastKnownStopName: 'Fulbari Gate',
-    ),
-    'bus-102': BusLocation(
-      busId: 'bus-102',
-      latitude: 22.8270,
-      longitude: 89.5380,
-      speedKmH: 31.0,
-      heading: 10.0,
-      updatedAt: DateTime.now().subtract(const Duration(minutes: 2)),
-      isDemo: true,
-      lastKnownStopName: 'Khalishpur',
-    ),
-    'bus-103': BusLocation(
-      busId: 'bus-103',
-      latitude: 22.8180,
-      longitude: 89.5460,
-      speedKmH: 18.0,
-      heading: 285.0,
-      updatedAt: DateTime.now().subtract(const Duration(minutes: 3)),
-      isDemo: true,
-      lastKnownStopName: 'Gollamari',
-    ),
-  };
-
-  // Demo Schedules
-  static final List<BusSchedule> demoSchedules = [
+  // NWU University Bus Schedules
+  static final List<BusSchedule> defaultSchedules = [
     const BusSchedule(
       id: 'sch-1',
       busId: 'bus-101',
@@ -319,40 +230,6 @@ class DemoData {
       expectedArrivalTime: '03:00 PM',
       dayOfWeek: 'Daily',
       status: 'Scheduled',
-    ),
-  ];
-
-  // Demo Pickup Requests
-  static final List<PickupRequest> demoPickupRequests = [
-    PickupRequest(
-      id: 'req-001',
-      studentId: 'student-001',
-      studentName: 'Tahmid Rahman',
-      studentPhone: '01711000001',
-      busId: 'bus-101',
-      busNumber: 'Bus 101',
-      routeId: 'route-sonadanga',
-      routeName: 'Campus ➔ Sonadanga',
-      stopId: 'stop-s-2',
-      stopName: 'Fulbari Gate',
-      status: PickupRequestStatus.accepted,
-      message: 'Waiting near Fulbari Gate passenger shed',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 25)),
-    ),
-    PickupRequest(
-      id: 'req-002',
-      studentId: 'student-001',
-      studentName: 'Tahmid Rahman',
-      studentPhone: '01711000001',
-      busId: 'bus-102',
-      busNumber: 'Bus 102',
-      routeId: 'route-daulatpur',
-      routeName: 'Campus ➔ Daulatpur',
-      stopId: 'stop-d-2',
-      stopName: 'Khalishpur',
-      status: PickupRequestStatus.pending,
-      message: 'Will be at Khalishpur stop in 5 mins',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 8)),
     ),
   ];
 }

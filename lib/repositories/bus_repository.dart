@@ -1,5 +1,5 @@
-import '../core/constants/demo_data.dart';
-import '../core/services/supabase_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/constants/nwu_default_data.dart';
 import '../core/utils/app_logger.dart';
 import '../models/bus_model.dart';
 import '../models/bus_location_model.dart';
@@ -8,207 +8,222 @@ import '../models/stop_model.dart';
 import '../models/schedule_model.dart';
 import '../models/pickup_request_model.dart';
 
-/// Repository managing transportation data access (Supabase with Demo fallback)
+/// Repository managing transportation data access via Cloud Firestore
 class BusRepository {
-  final SupabaseService _supabaseService;
+  final FirebaseFirestore _firestore;
 
-  BusRepository({SupabaseService? supabaseService})
-      : _supabaseService = supabaseService ?? SupabaseService.instance;
+  BusRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  bool get _isSupabaseActive => _supabaseService.isInitialized;
+  // In-memory cache initialized with clean NWU defaults for offline resilience
+  List<Bus> _cachedBuses = List.from(NWUDefaultData.defaultBuses);
+  List<BusRoute> _cachedRoutes = List.from(NWUDefaultData.defaultRoutes);
+  List<BusSchedule> _cachedSchedules = List.from(NWUDefaultData.defaultSchedules);
 
-  // Local state for demo updates during testing
-  final List<Bus> _inMemoryBuses = List.from(DemoData.demoBuses);
-  final List<BusRoute> _inMemoryRoutes = List.from(DemoData.demoRoutes);
-  final List<BusSchedule> _inMemorySchedules = List.from(DemoData.demoSchedules);
-  final Map<String, BusLocation> _inMemoryLocations = Map.from(DemoData.initialBusLocations);
-  final List<PickupRequest> _inMemoryRequests = List.from(DemoData.demoPickupRequests);
-
-  /// Fetch all university buses
+  /// Fetch all university buses from Cloud Firestore: 'buses'
   Future<List<Bus>> getBuses() async {
-    if (_isSupabaseActive) {
-      try {
-        final response = await _supabaseService.client!
-            .from('buses')
-            .select()
-            .order('bus_number');
-        final data = response as List<dynamic>;
-        return data.map((json) => Bus.fromJson(json as Map<String, dynamic>)).toList();
-      } catch (e) {
-        AppLogger.error('Failed to fetch buses from Supabase, falling back to local data', e);
+    try {
+      final snapshot = await _firestore.collection('buses').get();
+      if (snapshot.docs.isNotEmpty) {
+        _cachedBuses = snapshot.docs
+            .map((doc) => Bus.fromJson(doc.data()))
+            .toList()
+          ..sort((a, b) => a.busNumber.compareTo(b.busNumber));
+        return _cachedBuses;
+      } else {
+        // Seed default NWU fleet if Firestore collection is empty
+        await _seedDefaultBuses();
+        return _cachedBuses;
       }
+    } catch (e) {
+      AppLogger.warning('Cloud Firestore buses fetch skipped/offline: $e');
+      return _cachedBuses;
     }
-    return _inMemoryBuses;
   }
 
-  /// Fetch all bus routes
+  /// Fetch all bus routes from Cloud Firestore: 'routes'
   Future<List<BusRoute>> getRoutes() async {
-    if (_isSupabaseActive) {
-      try {
-        final response = await _supabaseService.client!
-            .from('routes')
-            .select('*, stops(*)')
-            .order('route_name');
-        final data = response as List<dynamic>;
-        return data.map((json) {
-          final stopsData = (json['stops'] as List<dynamic>?) ?? [];
-          final stops = stopsData
-              .map((s) => BusStop.fromJson(s as Map<String, dynamic>))
-              .toList()
-            ..sort((a, b) => a.sequenceOrder.compareTo(b.sequenceOrder));
-          return BusRoute.fromJson(json as Map<String, dynamic>, stops);
-        }).toList();
-      } catch (e) {
-        AppLogger.error('Failed to fetch routes from Supabase', e);
+    try {
+      final snapshot = await _firestore.collection('routes').get();
+      if (snapshot.docs.isNotEmpty) {
+        final routes = <BusRoute>[];
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          List<BusStop> stops = [];
+          if (data['stops'] is List) {
+            stops = (data['stops'] as List<dynamic>)
+                .map((s) => BusStop.fromJson(s as Map<String, dynamic>))
+                .toList()
+              ..sort((a, b) => a.sequenceOrder.compareTo(b.sequenceOrder));
+          } else {
+            // Check subcollection 'stops'
+            try {
+              final stopsSnap = await doc.reference
+                  .collection('stops')
+                  .orderBy('sequence_order')
+                  .get();
+              stops = stopsSnap.docs
+                  .map((sDoc) => BusStop.fromJson(sDoc.data()))
+                  .toList();
+            } catch (_) {}
+          }
+          routes.add(BusRoute.fromJson(data, stops));
+        }
+        routes.sort((a, b) => a.routeName.compareTo(b.routeName));
+        _cachedRoutes = routes;
+        return _cachedRoutes;
+      } else {
+        await _seedDefaultRoutes();
+        return _cachedRoutes;
       }
+    } catch (e) {
+      AppLogger.warning('Cloud Firestore routes fetch skipped/offline: $e');
+      return _cachedRoutes;
     }
-    return _inMemoryRoutes;
   }
 
   /// Fetch stops for a specific route
   Future<List<BusStop>> getStopsForRoute(String routeId) async {
-    if (_isSupabaseActive) {
-      try {
-        final response = await _supabaseService.client!
-            .from('stops')
-            .select()
-            .eq('route_id', routeId)
-            .order('sequence_order');
-        final data = response as List<dynamic>;
-        return data.map((json) => BusStop.fromJson(json as Map<String, dynamic>)).toList();
-      } catch (e) {
-        AppLogger.error('Failed to fetch stops from Supabase', e);
-      }
-    }
-    final route = _inMemoryRoutes.firstWhere(
+    final route = _cachedRoutes.firstWhere(
       (r) => r.id == routeId,
-      orElse: () => _inMemoryRoutes.first,
+      orElse: () => _cachedRoutes.isNotEmpty
+          ? _cachedRoutes.first
+          : NWUDefaultData.defaultRoutes.first,
     );
     return route.stops;
   }
 
-  /// Fetch bus schedules
+  /// Fetch bus schedules from Cloud Firestore: 'schedules'
   Future<List<BusSchedule>> getSchedules() async {
-    if (_isSupabaseActive) {
-      try {
-        final response = await _supabaseService.client!
-            .from('schedules')
-            .select()
-            .order('departure_time');
-        final data = response as List<dynamic>;
-        return data.map((json) => BusSchedule.fromJson(json as Map<String, dynamic>)).toList();
-      } catch (e) {
-        AppLogger.error('Failed to fetch schedules from Supabase', e);
+    try {
+      final snapshot = await _firestore.collection('schedules').get();
+      if (snapshot.docs.isNotEmpty) {
+        _cachedSchedules = snapshot.docs
+            .map((doc) => BusSchedule.fromJson(doc.data()))
+            .toList();
+        return _cachedSchedules;
+      } else {
+        await _seedDefaultSchedules();
+        return _cachedSchedules;
       }
+    } catch (e) {
+      AppLogger.warning('Cloud Firestore schedules fetch skipped/offline: $e');
+      return _cachedSchedules;
     }
-    return _inMemorySchedules;
   }
 
-  /// Fetch live bus locations
+  /// Fetch live bus locations from Cloud Firestore
+  /// Note: Primary live GPS streaming is handled in real time via BusLocationService (Firebase RTDB).
   Future<Map<String, BusLocation>> getBusLocations() async {
-    if (_isSupabaseActive) {
-      try {
-        final response = await _supabaseService.client!
-            .from('bus_locations')
-            .select();
-        final data = response as List<dynamic>;
-        final map = <String, BusLocation>{};
-        for (final item in data) {
-          final loc = BusLocation.fromJson(item as Map<String, dynamic>);
-          map[loc.busId] = loc;
-        }
-        return map;
-      } catch (e) {
-        AppLogger.error('Failed to fetch bus locations from Supabase', e);
+    try {
+      final snapshot = await _firestore.collection('bus_locations').get();
+      final map = <String, BusLocation>{};
+      for (final doc in snapshot.docs) {
+        final loc = BusLocation.fromJson(doc.data());
+        map[loc.busId] = loc;
       }
+      return map;
+    } catch (e) {
+      AppLogger.warning('Cloud Firestore bus_locations fetch notice: $e');
+      return {};
     }
-    return _inMemoryLocations;
   }
 
-  /// Fetch pickup requests (for student or all for admin/conductor)
+  /// Fetch pickup requests from Cloud Firestore: 'pickup_requests'
   Future<List<PickupRequest>> getPickupRequests({String? studentId}) async {
-    if (_isSupabaseActive) {
-      try {
-        var query = _supabaseService.client!.from('pickup_requests').select();
-        if (studentId != null) {
-          query = query.eq('student_id', studentId);
-        }
-        final response = await query.order('created_at', ascending: false);
-        final data = response as List<dynamic>;
-        return data.map((json) => PickupRequest.fromJson(json as Map<String, dynamic>)).toList();
-      } catch (e) {
-        AppLogger.error('Failed to fetch pickup requests from Supabase', e);
+    try {
+      Query<Map<String, dynamic>> query = _firestore.collection('pickup_requests');
+      if (studentId != null && studentId.isNotEmpty) {
+        query = query.where('student_id', isEqualTo: studentId);
       }
+      final snapshot = await query.get();
+      final requests = snapshot.docs
+          .map((doc) => PickupRequest.fromJson(doc.data()))
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return requests;
+    } catch (e) {
+      AppLogger.warning('Cloud Firestore pickup_requests fetch notice: $e');
+      return [];
     }
-    if (studentId != null) {
-      return _inMemoryRequests.where((r) => r.studentId == studentId).toList();
-    }
-    return _inMemoryRequests;
   }
 
-  /// Submit a new pickup request
+  /// Submit a new pickup request to Cloud Firestore: 'pickup_requests/{id}'
   Future<bool> submitPickupRequest(PickupRequest request) async {
-    if (_isSupabaseActive) {
-      try {
-        await _supabaseService.client!.from('pickup_requests').insert(request.toJson());
-        return true;
-      } catch (e) {
-        AppLogger.error('Failed to submit pickup request to Supabase', e);
-        return false;
-      }
-    }
-    _inMemoryRequests.insert(0, request);
-    return true;
-  }
-
-  /// Update pickup request status (Admin / Conductor action)
-  Future<bool> updatePickupRequestStatus(String requestId, PickupRequestStatus status) async {
-    if (_isSupabaseActive) {
-      try {
-        await _supabaseService.client!
-            .from('pickup_requests')
-            .update({'status': status.name})
-            .eq('id', requestId);
-        return true;
-      } catch (e) {
-        AppLogger.error('Failed to update request status in Supabase', e);
-        return false;
-      }
-    }
-    final index = _inMemoryRequests.indexWhere((r) => r.id == requestId);
-    if (index != -1) {
-      final old = _inMemoryRequests[index];
-      _inMemoryRequests[index] = PickupRequest(
-        id: old.id,
-        studentId: old.studentId,
-        studentName: old.studentName,
-        studentPhone: old.studentPhone,
-        busId: old.busId,
-        busNumber: old.busNumber,
-        routeId: old.routeId,
-        routeName: old.routeName,
-        stopId: old.stopId,
-        stopName: old.stopName,
-        status: status,
-        message: old.message,
-        createdAt: old.createdAt,
-      );
+    try {
+      await _firestore
+          .collection('pickup_requests')
+          .doc(request.id)
+          .set(request.toJson());
+      AppLogger.info('Submitted pickup request to Cloud Firestore: ${request.id}');
       return true;
+    } catch (e) {
+      AppLogger.error('Failed to submit pickup request to Cloud Firestore', e);
+      return false;
     }
-    return false;
   }
 
-  /// Updates simulated location for a bus during demo mode
-  void updateDemoLocation(String busId, double lat, double lng, {String? stopName}) {
-    _inMemoryLocations[busId] = BusLocation(
-      busId: busId,
-      latitude: lat,
-      longitude: lng,
-      speedKmH: 28.0,
-      heading: 0.0,
-      updatedAt: DateTime.now(),
-      isDemo: true,
-      lastKnownStopName: stopName,
-    );
+  /// Update pickup request status in Cloud Firestore: 'pickup_requests/{id}'
+  Future<bool> updatePickupRequestStatus(
+    String requestId,
+    PickupRequestStatus status,
+  ) async {
+    try {
+      await _firestore.collection('pickup_requests').doc(requestId).update({
+        'status': status.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+      AppLogger.info('Updated request $requestId status to ${status.name}');
+      return true;
+    } catch (e) {
+      AppLogger.error('Failed to update request status in Cloud Firestore', e);
+      return false;
+    }
+  }
+
+  // --- Automatic Seeding of Default NWU Fleet to Cloud Firestore ---
+
+  Future<void> _seedDefaultBuses() async {
+    try {
+      final batch = _firestore.batch();
+      for (final bus in NWUDefaultData.defaultBuses) {
+        final docRef = _firestore.collection('buses').doc(bus.id);
+        batch.set(docRef, bus.toJson(), SetOptions(merge: true));
+      }
+      await batch.commit();
+      AppLogger.info('Seeded default NWU buses to Cloud Firestore');
+    } catch (e) {
+      AppLogger.warning('Could not seed default buses: $e');
+    }
+  }
+
+  Future<void> _seedDefaultRoutes() async {
+    try {
+      final batch = _firestore.batch();
+      for (final route in NWUDefaultData.defaultRoutes) {
+        final docRef = _firestore.collection('routes').doc(route.id);
+        final routeMap = route.toJson();
+        routeMap['stops'] = route.stops.map((s) => s.toJson()).toList();
+        batch.set(docRef, routeMap, SetOptions(merge: true));
+      }
+      await batch.commit();
+      AppLogger.info('Seeded default NWU routes to Cloud Firestore');
+    } catch (e) {
+      AppLogger.warning('Could not seed default routes: $e');
+    }
+  }
+
+  Future<void> _seedDefaultSchedules() async {
+    try {
+      final batch = _firestore.batch();
+      for (final schedule in NWUDefaultData.defaultSchedules) {
+        final docRef = _firestore.collection('schedules').doc(schedule.id);
+        batch.set(docRef, schedule.toJson(), SetOptions(merge: true));
+      }
+      await batch.commit();
+      AppLogger.info('Seeded default NWU schedules to Cloud Firestore');
+    } catch (e) {
+      AppLogger.warning('Could not seed default schedules: $e');
+    }
   }
 }

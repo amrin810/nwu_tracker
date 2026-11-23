@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -107,6 +108,8 @@ class _SplashPageState extends State<SplashPage>
     ),
   ];
 
+  Timer? _initTimer;
+
   @override
   void initState() {
     super.initState();
@@ -131,35 +134,38 @@ class _SplashPageState extends State<SplashPage>
 
   @override
   void dispose() {
+    _initTimer?.cancel();
+    _controller.stop();
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _initializeApp() async {
-    // Artificial minimum delay for brand display
-    await Future.delayed(const Duration(milliseconds: 1200));
+  void _initializeApp() {
+    _initTimer = Timer(const Duration(milliseconds: 1200), () async {
+      if (!mounted) return;
 
-    if (!mounted) return;
+      final authProvider = context.read<AuthProvider>();
+      final busProvider = context.read<BusProvider>();
+      final locationProvider = context.read<LocationProvider>();
 
-    final authProvider = context.read<AuthProvider>();
-    final busProvider = context.read<BusProvider>();
-    final locationProvider = context.read<LocationProvider>();
+      // Initialize session and prefetch transportation assets
+      try {
+        await Future.wait([
+          authProvider.checkAuthStatus(),
+          busProvider.fetchAllData(),
+          locationProvider.fetchUserLocation(),
+        ]);
+      } catch (_) {}
 
-    // Initialize session and prefetch transportation assets
-    await Future.wait([
-      authProvider.checkAuthStatus(),
-      busProvider.fetchAllData(),
-      locationProvider.fetchUserLocation(),
-    ]);
+      if (!mounted) return;
 
-    if (!mounted) return;
-
-    // Navigate to Main Shell if authenticated, else Login
-    if (authProvider.isAuthenticated) {
-      Navigator.of(context).pushReplacementNamed(AppRoutes.mainShell);
-    } else {
-      Navigator.of(context).pushReplacementNamed(AppRoutes.login);
-    }
+      // Navigate to Main Shell if authenticated, else Login
+      if (authProvider.isAuthenticated) {
+        Navigator.of(context).pushReplacementNamed(AppRoutes.mainShell);
+      } else {
+        Navigator.of(context).pushReplacementNamed(AppRoutes.login);
+      }
+    });
   }
 
   @override

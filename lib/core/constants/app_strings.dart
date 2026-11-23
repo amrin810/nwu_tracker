@@ -29,7 +29,7 @@ class AppStrings {
   static const String pickupDisclaimer =
       'Pickup requests are requests only and do not guarantee the bus will stop. Halts depend on approved safety zones, passenger density, and driver/conductor confirmation.';
 
-  static const String simulatedDataNote = 'SIMULATED / DEMO DATA';
+  static const String defaultLocationNote = 'Campus Coordinates';
 
   // Permission & Error Messages
   static const String locationPermissionRequired =

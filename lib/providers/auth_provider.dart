@@ -124,12 +124,6 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Demo helper to quickly switch role during viva presentation
-  void switchDemoRole(UserRole role) {
-    _authRepository.switchDemoRole(role);
-    checkAuthStatus();
-  }
-
   /// Update active user's profile details in memory and persist to storage
   Future<bool> updateProfile({
     required String fullName,

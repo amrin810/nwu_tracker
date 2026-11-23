@@ -9,6 +9,7 @@ import '../../../providers/bus_provider.dart';
 import '../../../providers/location_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../widgets/app_button.dart';
+import '../../../widgets/empty_state.dart';
 
 /// Core Special Feature: Reachability Status Evaluation Page
 class ReachabilityPage extends StatefulWidget {
@@ -20,7 +21,7 @@ class ReachabilityPage extends StatefulWidget {
 
 class _ReachabilityPageState extends State<ReachabilityPage> {
   Bus? _selectedBus;
-  int _expectedArrivalMinutes = 14; // Default simulated ETA for viva demo
+  int? _simulatedArrivalMinutes;
   bool _busHasPassed = false;
 
   @override
@@ -28,14 +29,25 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
     final busProvider = context.watch<BusProvider>();
     final locationProvider = context.watch<LocationProvider>();
 
+    if (busProvider.buses.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Reachability Status')),
+        body: const Center(
+          child: EmptyState(
+            icon: Icons.directions_bus_outlined,
+            title: 'No Buses Available',
+            message: 'There are currently no active buses available to track reachability.',
+          ),
+        ),
+      );
+    }
+
     final bus =
         _selectedBus ??
         busProvider.selectedBus ??
-        (busProvider.buses.isNotEmpty ? busProvider.buses.first : null);
+        busProvider.buses.first;
 
-    final liveLoc = bus != null
-        ? busProvider.getValidLiveLocation(bus.id)
-        : null;
+    final liveLoc = busProvider.getValidLiveLocation(bus.id);
     final bool hasValidLocation = liveLoc != null;
 
     final double? distanceMeters = hasValidLocation
@@ -48,19 +60,32 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
         ? locationProvider.calculateWalkingTimeMinutes(distanceMeters)
         : null;
 
+    // Calculate dynamic ETA from live bus telemetry, or fall back to schedule/baseline
+    final int effectiveArrivalMinutes;
+    if (_simulatedArrivalMinutes != null) {
+      effectiveArrivalMinutes = _simulatedArrivalMinutes!;
+    } else if (hasValidLocation && distanceMeters != null) {
+      final double busSpeedKmH = (liveLoc.speed > 5.0) ? liveLoc.speed : 25.0;
+      final double busMetersPerMinute = (busSpeedKmH * 1000.0) / 60.0;
+      final computed = (distanceMeters / busMetersPerMinute).ceil();
+      effectiveArrivalMinutes = computed > 0 ? computed : 1;
+    } else {
+      effectiveArrivalMinutes = 14;
+    }
+
     // Run the rule-based reachability algorithm
     final result = locationProvider.computeReachability(
-      bus: bus ?? busProvider.buses.first,
+      bus: bus,
       busLocation: hasValidLocation
           ? BusLocation(
-              busId: bus?.id ?? 'bus-101',
+              busId: bus.id,
               latitude: liveLoc.latitude,
               longitude: liveLoc.longitude,
               speedKmH: liveLoc.speed,
               updatedAt: liveLoc.lastUpdated,
             )
           : null,
-      expectedBusArrivalMinutes: _expectedArrivalMinutes,
+      expectedBusArrivalMinutes: effectiveArrivalMinutes,
       busHasPassedStop: _busHasPassed,
     );
 
@@ -78,7 +103,8 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
             ),
             const SizedBox(height: 6),
             DropdownButtonFormField<Bus>(
-              initialValue: bus,
+              key: ValueKey(bus.id),
+              initialValue: busProvider.buses.contains(bus) ? bus : busProvider.buses.first,
               decoration: const InputDecoration(
                 prefixIcon: Icon(
                   Icons.directions_bus_rounded,
@@ -96,7 +122,10 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
               }).toList(),
               onChanged: (val) {
                 if (val != null) {
-                  setState(() => _selectedBus = val);
+                  setState(() {
+                    _selectedBus = val;
+                    _simulatedArrivalMinutes = null;
+                  });
                   busProvider.selectBus(val);
                 }
               },
@@ -180,7 +209,7 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
                       ),
                     ),
                     const Divider(height: 20),
-                    _factorRow('Target Bus', bus?.busNumber ?? 'Bus 101'),
+                    _factorRow('Target Bus', bus.busNumber),
                     _factorRow(
                       'Distance to Bus/Stop',
                       distanceMeters != null
@@ -196,7 +225,7 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
                     _factorRow(
                       'Expected Bus Arrival (ETA)',
                       hasValidLocation
-                          ? '$_expectedArrivalMinutes min'
+                          ? '$effectiveArrivalMinutes min'
                           : 'Unavailable',
                     ),
                     _factorRow(
@@ -213,7 +242,7 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
             ),
             const SizedBox(height: 20),
 
-            // Interactive Viva Simulation Sliders & Toggles
+            // Interactive Scenario Simulation Sliders & Toggles
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -234,7 +263,7 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
                         ),
                         SizedBox(width: 8),
                         Text(
-                          'Simulate Scenarios for Viva Demonstration',
+                          'Scenario Simulation & Algorithm Testing',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -246,9 +275,9 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Simulate Expected Bus Arrival:'),
+                        const Text('Expected Bus Arrival (ETA):'),
                         Text(
-                          '$_expectedArrivalMinutes min',
+                          '$effectiveArrivalMinutes min',
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             color: AppColors.navyAccent,
@@ -257,13 +286,13 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
                       ],
                     ),
                     Slider(
-                      value: _expectedArrivalMinutes.toDouble(),
+                      value: effectiveArrivalMinutes.toDouble().clamp(1.0, 30.0),
                       min: 1,
                       max: 30,
                       divisions: 29,
-                      label: '$_expectedArrivalMinutes min',
+                      label: '$effectiveArrivalMinutes min',
                       onChanged: (val) =>
-                          setState(() => _expectedArrivalMinutes = val.toInt()),
+                          setState(() => _simulatedArrivalMinutes = val.toInt()),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -281,7 +310,7 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
             ),
             const SizedBox(height: 20),
 
-            // Academic Viva Logic Box
+            // Algorithm Logic Rule Box
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -292,7 +321,7 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Viva Note: How this is evaluated',
+                    'Reachability Evaluation Rules',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -321,7 +350,7 @@ class _ReachabilityPageState extends State<ReachabilityPage> {
               text: 'View Bus on Live Tracking Map',
               icon: Icons.map_rounded,
               onPressed: () {
-                if (bus != null) busProvider.selectBus(bus);
+                busProvider.selectBus(bus);
                 Navigator.of(context).pushNamed(AppRoutes.liveTracking);
               },
             ),

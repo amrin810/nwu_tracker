@@ -9,6 +9,7 @@ import '../../../providers/bus_provider.dart';
 import '../../../providers/location_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../widgets/app_button.dart';
+import '../../../widgets/empty_state.dart';
 
 /// Dedicated page for Distance and Walking Travel-Time Calculations
 class DistanceTimePage extends StatefulWidget {
@@ -27,19 +28,35 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
     final busProvider = context.watch<BusProvider>();
     final locationProvider = context.watch<LocationProvider>();
 
+    if (busProvider.buses.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Distance & Travel Time')),
+        body: const Center(
+          child: EmptyState(
+            icon: Icons.directions_bus_outlined,
+            title: 'No Buses Available',
+            message: 'There are currently no active buses available to estimate distance.',
+          ),
+        ),
+      );
+    }
+
     final bus =
         _selectedBus ??
         busProvider.selectedBus ??
-        (busProvider.buses.isNotEmpty ? busProvider.buses.first : null);
-    final busLoc = bus != null ? busProvider.getLocationForBus(bus.id) : null;
+        busProvider.buses.first;
 
-    final distanceMeters = busLoc != null
+    final busLoc = busProvider.getLocationForBus(bus.id);
+
+    final double? distanceMeters = busLoc != null
         ? locationProvider.calculateDistanceToBus(busLoc)
-        : 850.0;
+        : null;
 
     // Formula: Travel Time = Distance / Walking Speed
     final metersPerMinute = (_customSpeedKmH * 1000.0) / 60.0;
-    final walkingMinutes = (distanceMeters / metersPerMinute).ceil();
+    final int? walkingMinutes = distanceMeters != null
+        ? (distanceMeters / metersPerMinute).ceil()
+        : null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Distance & Travel Time')),
@@ -55,7 +72,10 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
             ),
             const SizedBox(height: 6),
             DropdownButtonFormField<Bus>(
-              initialValue: bus,
+              key: ValueKey(bus.id),
+              initialValue: busProvider.buses.contains(bus)
+                  ? bus
+                  : busProvider.buses.first,
               decoration: const InputDecoration(
                 prefixIcon: Icon(
                   Icons.directions_bus_rounded,
@@ -94,7 +114,9 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
                         Expanded(
                           child: _statColumn(
                             'Approx. Distance',
-                            Formatters.formatDistance(distanceMeters),
+                            distanceMeters != null
+                                ? Formatters.formatDistance(distanceMeters)
+                                : 'Location unavailable',
                             Icons.straighten_rounded,
                             AppColors.navyAccent,
                           ),
@@ -107,7 +129,9 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
                         Expanded(
                           child: _statColumn(
                             'Est. Walking Time',
-                            Formatters.formatDurationMinutes(walkingMinutes),
+                            walkingMinutes != null
+                                ? Formatters.formatDurationMinutes(walkingMinutes)
+                                : 'Location unavailable',
                             Icons.directions_walk_rounded,
                             AppColors.success,
                           ),
@@ -150,9 +174,9 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
-            // Configurable Walking Speed Slider
+            // Speed Slider Card (Interactive Calculation)
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -160,7 +184,7 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
                 side: const BorderSide(color: AppColors.cardBorder),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(18.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -168,85 +192,101 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Average Walking Speed',
+                          'Pace Adjustment',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        Text(
-                          '${_customSpeedKmH.toStringAsFixed(1)} km/h',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.navyAccent,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.navyAccent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${_customSpeedKmH.toStringAsFixed(1)} km/h',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navyAccent,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Adjust your estimated walking pace to recalculate travel time:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Slider(
                       value: _customSpeedKmH,
                       min: 3.0,
                       max: 7.0,
                       divisions: 8,
                       label: '${_customSpeedKmH.toStringAsFixed(1)} km/h',
+                      activeColor: AppColors.primaryLight,
                       onChanged: (val) {
                         setState(() => _customSpeedKmH = val);
                         locationProvider.setWalkingSpeed(val);
                       },
                     ),
-                    const Text(
-                      'Default: 5.0 km/h (Standard human pace ~83.3 meters/min)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textLight,
-                      ),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Slow (3 km/h)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          'Standard (5 km/h)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          'Brisk (7 km/h)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
-
-            // Viva Formula & Explanation Box
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Mathematical Formula',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textWhite,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Travel Time (minutes) = Distance (meters) ÷ [ (Walking Speed in km/h × 1000) ÷ 60 ]',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textWhite,
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 24),
 
-            // Check Reachability Button
+            // Navigation Actions
             AppButton(
-              text: 'Evaluate Reachability Status',
-              icon: Icons.speed_rounded,
+              text: 'Track this Bus on Live Map',
+              icon: Icons.map_rounded,
               onPressed: () {
-                if (bus != null) busProvider.selectBus(bus);
+                busProvider.selectBus(bus);
+                Navigator.of(context).pushNamed(AppRoutes.liveTracking);
+              },
+            ),
+            const SizedBox(height: 12),
+            AppButton(
+              text: 'Check Reachability Status',
+              icon: Icons.timer_outlined,
+              type: AppButtonType.outline,
+              onPressed: () {
+                busProvider.selectBus(bus);
                 Navigator.of(context).pushNamed(AppRoutes.reachability);
               },
             ),
@@ -256,23 +296,24 @@ class _DistanceTimePageState extends State<DistanceTimePage> {
     );
   }
 
-  Widget _statColumn(String label, String value, IconData icon, Color color) {
+  Widget _statColumn(
+    String label,
+    String value,
+    IconData icon,
+    Color accentColor,
+  ) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 28),
+        Icon(icon, color: accentColor, size: 24),
         const SizedBox(height: 6),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
-          ),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
         ),
       ],
     );

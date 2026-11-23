@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// Lightweight logging utility for debugging and viva demonstration
+/// Lightweight logging utility for debugging and telemetry tracking
 class AppLogger {
   AppLogger._();
 

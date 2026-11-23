@@ -78,7 +78,7 @@ class NearbyBusPage extends StatelessWidget {
                 Expanded(
                   child: Text(
                     locationProvider.isUsingFallbackLocation
-                        ? 'Using Campus Coordinates (${AppStrings.simulatedDataNote})'
+                        ? 'Using Campus Coordinates (${AppStrings.defaultLocationNote})'
                         : 'Accurate GPS Active • Sorted by nearest distance',
                     style: TextStyle(
                       fontSize: 12,

@@ -59,6 +59,16 @@ class _PickupRequestPageState extends State<PickupRequestPage>
         _selectedStop ??
         (route?.stops.isNotEmpty == true ? route!.stops.first : null);
 
+    if (authProvider.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in to submit a pickup request.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
     if (bus == null || route == null || stop == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -70,11 +80,12 @@ class _PickupRequestPageState extends State<PickupRequestPage>
 
     setState(() => _isSubmitting = true);
 
+    final user = authProvider.user!;
     final request = PickupRequest(
       id: 'req-${DateTime.now().millisecondsSinceEpoch}',
-      studentId: authProvider.user?.id ?? 'student-001',
-      studentName: authProvider.user?.fullName ?? 'Tahmid Rahman',
-      studentPhone: authProvider.user?.phone ?? '01711000001',
+      studentId: user.studentId ?? user.userId ?? user.id,
+      studentName: user.fullName,
+      studentPhone: user.phone,
       busId: bus.id,
       busNumber: bus.busNumber,
       routeId: route.id,
@@ -116,6 +127,19 @@ class _PickupRequestPageState extends State<PickupRequestPage>
   Widget build(BuildContext context) {
     final busProvider = context.watch<BusProvider>();
     final myRequests = busProvider.pickupRequests;
+
+    final effectiveBus = (busProvider.buses.contains(_selectedBus))
+        ? _selectedBus
+        : (busProvider.buses.isNotEmpty ? busProvider.buses.first : null);
+
+    final effectiveRoute = (busProvider.routes.contains(_selectedRoute))
+        ? _selectedRoute
+        : (busProvider.routes.isNotEmpty ? busProvider.routes.first : null);
+
+    final currentStops = effectiveRoute?.stops ?? [];
+    final effectiveStop = (currentStops.contains(_selectedStop))
+        ? _selectedStop
+        : (currentStops.isNotEmpty ? currentStops.first : null);
 
     return Scaffold(
       appBar: AppBar(
@@ -184,11 +208,8 @@ class _PickupRequestPageState extends State<PickupRequestPage>
                 ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<Bus>(
-                  initialValue:
-                      _selectedBus ??
-                      (busProvider.buses.isNotEmpty
-                          ? busProvider.buses.first
-                          : null),
+                  key: ValueKey(effectiveBus?.id),
+                  initialValue: effectiveBus,
                   decoration: const InputDecoration(
                     prefixIcon: Icon(
                       Icons.directions_bus_rounded,
@@ -213,11 +234,8 @@ class _PickupRequestPageState extends State<PickupRequestPage>
                 ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<BusRoute>(
-                  initialValue:
-                      _selectedRoute ??
-                      (busProvider.routes.isNotEmpty
-                          ? busProvider.routes.first
-                          : null),
+                  key: ValueKey(effectiveRoute?.id),
+                  initialValue: effectiveRoute,
                   decoration: const InputDecoration(
                     prefixIcon: Icon(
                       Icons.alt_route_rounded,
@@ -246,19 +264,8 @@ class _PickupRequestPageState extends State<PickupRequestPage>
                 ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<BusStop>(
-                  initialValue:
-                      _selectedStop ??
-                      ((_selectedRoute ??
-                                      (busProvider.routes.isNotEmpty
-                                          ? busProvider.routes.first
-                                          : null))
-                                  ?.stops
-                                  .isNotEmpty ==
-                              true
-                          ? (_selectedRoute ?? busProvider.routes.first)
-                                .stops
-                                .first
-                          : null),
+                  key: ValueKey('${effectiveRoute?.id}_${effectiveStop?.id}'),
+                  initialValue: effectiveStop,
                   decoration: const InputDecoration(
                     prefixIcon: Icon(
                       Icons.location_on_rounded,
@@ -266,22 +273,14 @@ class _PickupRequestPageState extends State<PickupRequestPage>
                       size: 20,
                     ),
                   ),
-                  items:
-                      (_selectedRoute ??
-                              (busProvider.routes.isNotEmpty
-                                  ? busProvider.routes.first
-                                  : null))
-                          ?.stops
-                          .map((s) {
-                            return DropdownMenuItem(
-                              value: s,
-                              child: Text(
-                                '${s.stopName} (Stop #${s.sequenceOrder})',
-                              ),
-                            );
-                          })
-                          .toList() ??
-                      [],
+                  items: currentStops.map((s) {
+                    return DropdownMenuItem(
+                      value: s,
+                      child: Text(
+                        '${s.stopName} (Stop #${s.sequenceOrder})',
+                      ),
+                    );
+                  }).toList(),
                   onChanged: (val) => setState(() => _selectedStop = val),
                 ),
                 const SizedBox(height: 16),

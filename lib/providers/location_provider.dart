@@ -120,14 +120,18 @@ class LocationProvider extends ChangeNotifier {
     int? expectedBusArrivalMinutes,
     bool busHasPassedStop = false,
   }) {
-    final distance = busLocation != null ? calculateDistanceToBus(busLocation) : 850.0;
-    final walkingMinutes = _locationService.calculateWalkingTimeMinutes(
-      distance,
-      speedKmH: _walkingSpeedKmH,
-    );
+    final distance =
+        busLocation != null ? calculateDistanceToBus(busLocation) : 0.0;
+    final walkingMinutes = distance > 0
+        ? _locationService.calculateWalkingTimeMinutes(
+            distance,
+            speedKmH: _walkingSpeedKmH,
+          )
+        : 0;
 
-    // If bus arrival is not explicitly passed, estimate standard route arrival (e.g. 14 mins)
-    final arrivalMinutes = expectedBusArrivalMinutes ?? (walkingMinutes + 4);
+    // If bus arrival is not explicitly passed, estimate arrival based on walking time buffer
+    final arrivalMinutes =
+        expectedBusArrivalMinutes ?? (walkingMinutes > 0 ? walkingMinutes + 4 : 0);
 
     return _reachabilityService.calculate(
       busId: bus.id,

@@ -164,7 +164,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 AppTextField(
                   controller: _emailController,
                   label: 'Email',
-                  hint: 'name@university.edu.bd',
+                  hint: 'student@nwu.edu.bd',
                   prefixIcon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
                   validator: (v) => (v == null || !v.contains('@'))
