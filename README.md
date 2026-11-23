@@ -152,6 +152,34 @@ flutter build apk --release --no-tree-shake-icons
 
 ---
 
+## 📡 Hardware GPS Tracker (ESP32-S3 + u-blox NEO-7N)
+
+For continuous, automatic bus tracking without manual phone operation, an IoT hardware beacon built with **ESP32-S3 WROOM** and **u-blox NEO-7N GPS** streams live coordinates to Firebase Realtime Database (`bus_locations/{busId}`).
+
+### Wiring / Connection Diagram
+
+```
++------------------------------------+          +---------------------------+
+|         u-blox NEO-7N GPS          |          |      ESP32-S3 WROOM       |
+|                                    |          |                           |
+|  [ VCC ] -------------------------->--------> |  3.3V (or 5V / VIN)       |
+|  [ GND ] -------------------------->--------> |  GND                      |
+|  [ TX  ] -------------------------->--------> |  GPIO 18 (GPS_RX_PIN)     |
+|  [ RX  ] -------------------------->--------> |  GPIO 17 (GPS_TX_PIN)     |
++------------------------------------+          +---------------------------+
+```
+
+| NEO-7N GPS Pin | ESP32-S3 Pin | Function |
+|---|---|---|
+| **VCC** | **3.3V** (or 5V / VIN) | Module Power Supply |
+| **GND** | **GND** | Common Ground |
+| **TX** | **GPIO 18** | Transmits NMEA GPS data to ESP32 RX |
+| **RX** | **GPIO 17** | Receives configuration from ESP32 TX |
+
+Firmware source code, diagnostic tools, and step-by-step flashing instructions are in [`hardware/esp32_bus_tracker/`](hardware/esp32_bus_tracker/).
+
+---
+
 ## 👥 User Roles
 
 | Role | Access |
