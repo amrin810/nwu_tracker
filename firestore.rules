@@ -1,7 +1,102 @@
 rules_version = '2';
 
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId} (matches request.auth.uid)
+// Fields:
+//   - id: string (optional/nullable, matches userId)
+//   - email: string (required, valid email address)
+//   - fullName / full_name: string (required, 1-100 chars)
+//   - userId / student_id: string (optional/nullable, student/driver/conductor ID)
+//   - phone: string (optional/nullable, <= 25 chars)
+//   - role: string (required, 'student' | 'driver' | 'conductor' | 'admin')
+//   - assignedBusId / assigned_bus_id: string (optional/nullable, <= 50 chars)
+//   - department: string (optional/nullable, <= 100 chars)
+//   - university: string (optional/nullable, <= 100 chars)
+//   - photoBase64 / profileImageBase64 / photo_base64: string (optional/nullable base64 data)
+//   - createdAt: timestamp / string (optional)
+//   - updatedAt: timestamp / string (optional)
+//
+// Collection: buses
+// Document ID: {busId}
+// Fields:
+//   - id: string (optional, <= 50 chars)
+//   - bus_number: string (required, 1-50 chars)
+//   - bus_name: string (optional, <= 100 chars)
+//   - license_plate: string (optional, <= 50 chars)
+//   - capacity: number (optional, 1-500)
+//   - current_route_id: string (optional/nullable, <= 50 chars)
+//   - current_route_name: string (optional/nullable, <= 100 chars)
+//   - status: string (required, 'active' | 'delayed' | 'inactive' | 'maintenance')
+//   - driver_name: string (optional/nullable, <= 100 chars)
+//   - driver_phone: string (optional/nullable, <= 25 chars)
+//   - conductor_name: string (optional/nullable, <= 100 chars)
+//   - conductor_phone: string (optional/nullable, <= 25 chars)
+//
+// Collection: routes
+// Document ID: {routeId}
+// Fields:
+//   - id: string (optional, <= 50 chars)
+//   - route_name: string (required, 1-100 chars)
+//   - start_point: string (optional, <= 100 chars)
+//   - end_point: string (optional, <= 100 chars)
+//   - total_distance_km: number (optional, >= 0)
+//   - estimated_duration_minutes: number (optional, >= 0)
+//   - stops: list (optional embedded stops array)
+//
+// Subcollection: routes/{routeId}/stops
+// Document ID: {stopId}
+// Fields:
+//   - id: string (optional, <= 50 chars)
+//   - stop_name: string (required, 1-100 chars)
+//   - latitude: number (required, -90 to 90)
+//   - longitude: number (required, -180 to 180)
+//   - sequence_order: number (optional, >= 0)
+//   - estimated_minutes_from_start: number (optional, >= 0)
+//   - route_id: string (optional, <= 50 chars)
+//
+// Collection: schedules
+// Document ID: {scheduleId}
+// Fields:
+//   - id: string (optional, <= 50 chars)
+//   - bus_id: string (required, 1-50 chars)
+//   - bus_number: string (optional, <= 50 chars)
+//   - route_id: string (required, 1-50 chars)
+//   - route_name: string (optional, <= 100 chars)
+//   - departure_time: string (required, 1-50 chars)
+//   - expected_arrival_time: string (required, 1-50 chars)
+//   - day_of_week: string (optional, <= 50 chars)
+//   - status: string (optional, <= 50 chars)
+//
+// Collection: pickup_requests
+// Document ID: {requestId}
+// Fields:
+//   - id: string (optional, <= 50 chars)
+//   - student_id: string (required, 1-50 chars)
+//   - student_name: string (optional, <= 100 chars)
+//   - student_phone: string (optional/nullable, <= 25 chars)
+//   - bus_id: string (required, 1-50 chars)
+//   - bus_number: string (optional, <= 50 chars)
+//   - route_id: string (required, 1-50 chars)
+//   - route_name: string (optional, <= 100 chars)
+//   - stop_id: string (required, 1-50 chars)
+//   - stop_name: string (optional, <= 100 chars)
+//   - status: string (required, 'pending' | 'accepted' | 'rejected' | 'completed')
+//   - message: string (optional/nullable, <= 500 chars)
+//   - created_at: string / timestamp (optional, <= 50 chars)
+//   - updated_at: string / timestamp (optional, <= 50 chars)
+//
+// ===============================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
 
     function isAuthenticated() {
       return request.auth != null;
@@ -11,13 +106,233 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isNonEmptyString(data, field, minLen, maxLen) {
+      return (field in data) &&
+        data[field] is string &&
+        data[field].size() >= minLen &&
+        data[field].size() <= maxLen;
+    }
+
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isOptionalNumber(data, field) {
+      return !(field in data) ||
+        data[field] == null ||
+        data[field] is number;
+    }
+
+    function isOptionalList(data, field, maxSize) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    function isOptionalTimestampOrString(data, field, maxLen) {
+      return !(field in data) ||
+        data[field] == null ||
+        data[field] is timestamp ||
+        (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // ===============================================================
+    // Domain Validators (Validator Function Pattern)
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasOnly([
+        'id', 'email', 'fullName', 'full_name', 'userId', 'student_id',
+        'phone', 'role', 'assignedBusId', 'assigned_bus_id',
+        'department', 'university', 'photoBase64', 'profileImageBase64',
+        'photo_base64', 'createdAt', 'updatedAt'
+      ]) &&
+      ('email' in data && isValidEmail(data.email) && data.email.size() <= 150) &&
+      (('fullName' in data && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100) ||
+       ('full_name' in data && data.full_name is string && data.full_name.size() >= 1 && data.full_name.size() <= 100)) &&
+      ('role' in data && data.role is string && data.role in ['student', 'driver', 'conductor', 'admin']) &&
+      isOptionalString(data, 'id', 100) &&
+      isOptionalString(data, 'userId', 50) &&
+      isOptionalString(data, 'student_id', 50) &&
+      isOptionalString(data, 'phone', 25) &&
+      isOptionalString(data, 'assignedBusId', 50) &&
+      isOptionalString(data, 'assigned_bus_id', 50) &&
+      isOptionalString(data, 'department', 100) &&
+      isOptionalString(data, 'university', 100) &&
+      isOptionalString(data, 'photoBase64', 1000000) &&
+      isOptionalString(data, 'profileImageBase64', 1000000) &&
+      isOptionalString(data, 'photo_base64', 1000000) &&
+      isOptionalTimestampOrString(data, 'createdAt', 50) &&
+      isOptionalTimestampOrString(data, 'updatedAt', 50);
+    }
+
+    function isValidBus(data) {
+      return data.keys().hasOnly([
+        'id', 'bus_number', 'bus_name', 'license_plate', 'capacity',
+        'current_route_id', 'current_route_name', 'status',
+        'driver_name', 'driver_phone', 'conductor_name', 'conductor_phone'
+      ]) &&
+      isNonEmptyString(data, 'bus_number', 1, 50) &&
+      ('status' in data && data.status is string && data.status in ['active', 'delayed', 'inactive', 'maintenance']) &&
+      isOptionalString(data, 'id', 50) &&
+      isOptionalString(data, 'bus_name', 100) &&
+      isOptionalString(data, 'license_plate', 50) &&
+      isOptionalNumber(data, 'capacity') &&
+      isOptionalString(data, 'current_route_id', 50) &&
+      isOptionalString(data, 'current_route_name', 100) &&
+      isOptionalString(data, 'driver_name', 100) &&
+      isOptionalString(data, 'driver_phone', 25) &&
+      isOptionalString(data, 'conductor_name', 100) &&
+      isOptionalString(data, 'conductor_phone', 25);
+    }
+
+    function isValidRoute(data) {
+      return data.keys().hasOnly([
+        'id', 'route_name', 'start_point', 'end_point',
+        'total_distance_km', 'estimated_duration_minutes', 'stops'
+      ]) &&
+      isNonEmptyString(data, 'route_name', 1, 100) &&
+      isOptionalString(data, 'id', 50) &&
+      isOptionalString(data, 'start_point', 100) &&
+      isOptionalString(data, 'end_point', 100) &&
+      isOptionalNumber(data, 'total_distance_km') &&
+      isOptionalNumber(data, 'estimated_duration_minutes') &&
+      isOptionalList(data, 'stops', 100);
+    }
+
+    function isValidStop(data) {
+      return data.keys().hasOnly([
+        'id', 'stop_name', 'latitude', 'longitude',
+        'sequence_order', 'estimated_minutes_from_start', 'route_id'
+      ]) &&
+      isNonEmptyString(data, 'stop_name', 1, 100) &&
+      ('latitude' in data && data.latitude is number && data.latitude >= -90.0 && data.latitude <= 90.0) &&
+      ('longitude' in data && data.longitude is number && data.longitude >= -180.0 && data.longitude <= 180.0) &&
+      isOptionalString(data, 'id', 50) &&
+      isOptionalNumber(data, 'sequence_order') &&
+      isOptionalNumber(data, 'estimated_minutes_from_start') &&
+      isOptionalString(data, 'route_id', 50);
+    }
+
+    function isValidSchedule(data) {
+      return data.keys().hasOnly([
+        'id', 'bus_id', 'bus_number', 'route_id', 'route_name',
+        'departure_time', 'expected_arrival_time', 'day_of_week', 'status'
+      ]) &&
+      isNonEmptyString(data, 'bus_id', 1, 50) &&
+      isNonEmptyString(data, 'route_id', 1, 50) &&
+      isNonEmptyString(data, 'departure_time', 1, 50) &&
+      isNonEmptyString(data, 'expected_arrival_time', 1, 50) &&
+      isOptionalString(data, 'id', 50) &&
+      isOptionalString(data, 'bus_number', 50) &&
+      isOptionalString(data, 'route_name', 100) &&
+      isOptionalString(data, 'day_of_week', 50) &&
+      isOptionalString(data, 'status', 50);
+    }
+
+    function isValidPickupRequest(data) {
+      return data.keys().hasOnly([
+        'id', 'student_id', 'student_name', 'student_phone',
+        'bus_id', 'bus_number', 'route_id', 'route_name',
+        'stop_id', 'stop_name', 'status', 'message',
+        'created_at', 'updated_at'
+      ]) &&
+      isNonEmptyString(data, 'student_id', 1, 50) &&
+      isNonEmptyString(data, 'bus_id', 1, 50) &&
+      isNonEmptyString(data, 'route_id', 1, 50) &&
+      isNonEmptyString(data, 'stop_id', 1, 50) &&
+      ('status' in data && data.status is string && data.status in ['pending', 'accepted', 'rejected', 'completed']) &&
+      isOptionalString(data, 'id', 50) &&
+      isOptionalString(data, 'student_name', 100) &&
+      isOptionalString(data, 'student_phone', 25) &&
+      isOptionalString(data, 'bus_number', 50) &&
+      isOptionalString(data, 'route_name', 100) &&
+      isOptionalString(data, 'stop_name', 100) &&
+      isOptionalString(data, 'message', 500) &&
+      isOptionalTimestampOrString(data, 'created_at', 50) &&
+      isOptionalTimestampOrString(data, 'updated_at', 50);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Users Collection
+    // Read: authenticated users (needed for conductor/driver lookup and unique ID verification)
+    // Create/Update: authenticated owner only (matching auth.uid)
+    // Delete: disallowed
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+        isValidUser(request.resource.data) &&
+        (!('id' in request.resource.data) || request.resource.data.id == null || request.resource.data.id == userId);
+      allow update: if isOwner(userId) &&
+        isValidUser(request.resource.data) &&
+        (!('id' in request.resource.data) || request.resource.data.id == null || request.resource.data.id == userId) &&
+        (!('role' in resource.data) || request.resource.data.role == resource.data.role);
       allow delete: if false;
     }
 
+    // Buses Collection
+    // Read: authenticated users
+    // Create/Update: authenticated users
+    // Delete: disallowed
+    match /buses/{busId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidBus(request.resource.data);
+      allow update: if isAuthenticated() && isValidBus(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Routes Collection & Stops Subcollection
+    // Read: authenticated users
+    // Create/Update: authenticated users
+    // Delete: disallowed
+    match /routes/{routeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRoute(request.resource.data);
+      allow update: if isAuthenticated() && isValidRoute(request.resource.data);
+      allow delete: if false;
+
+      match /stops/{stopId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidStop(request.resource.data);
+        allow update: if isAuthenticated() && isValidStop(request.resource.data);
+        allow delete: if false;
+      }
+    }
+
+    // Schedules Collection
+    // Read: authenticated users
+    // Create/Update: authenticated users
+    // Delete: disallowed
+    match /schedules/{scheduleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSchedule(request.resource.data);
+      allow update: if isAuthenticated() && isValidSchedule(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Pickup Requests Collection
+    // Read: authenticated users
+    // Create: authenticated users (students submitting requests)
+    // Update: authenticated users (conductors/admins accepting/rejecting)
+    // Delete: disallowed
+    match /pickup_requests/{requestId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidPickupRequest(request.resource.data);
+      allow update: if isAuthenticated() && isValidPickupRequest(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Default Deny for all other collections
     match /{document=**} {
       allow read, write: if false;
     }
